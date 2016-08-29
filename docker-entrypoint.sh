@@ -1,7 +1,7 @@
 #!/bin/sh
 chown -R postgres "$PGDATA"
 
-if [ -z "$(ls -A "$PGDATA")" ]; then
+if [ ! -e "$PGDATA/PG_VERSION" ]; then
     gosu postgres initdb
     sed -ri "s/^#(listen_addresses\s*=\s*)\S+/\1'*'/" "$PGDATA"/postgresql.conf
 
@@ -19,7 +19,6 @@ if [ -z "$(ls -A "$PGDATA")" ]; then
       authMethod=trust
     fi
     echo
-
 
     if [ "$POSTGRES_DB" != 'postgres' ]; then
       createSql="CREATE DATABASE $POSTGRES_DB;"
@@ -53,9 +52,19 @@ if [ -z "$(ls -A "$PGDATA")" ]; then
         echo
     done
 
+    mkdir /config
+
+    mv $PGDATA/postgresql.conf /config
+    mv $PGDATA/pg_hba.conf /config
+    mv $PGDATA/pg_ident.conf /config
+
     gosu postgres pg_ctl -D "$PGDATA" -m fast -w stop
 
     { echo; echo "host all all 0.0.0.0/0 $authMethod"; } >> "$PGDATA"/pg_hba.conf
 fi
 
-exec gosu postgres "$@"
+if [ "$@" = 'postgres' ]; then
+    exec gosu postgres "$@" -D "$PGDATA" -c config_file=/config/postgresql.conf -c hba_file=/config/pg_hba.conf -c ident_file=/config/pg_ident.conf
+else
+    exec gosu postgres "$@"
+fi
